@@ -846,7 +846,7 @@ export default function HomeScreen() {
                         onFocus={() => setSearchFocused(true)}
                         onBlur={() => setSearchFocused(false)}
                         onSubmitEditing={() => openServices()}
-                        placeholder="Your Needs?"
+                        placeholder=" Your Needs?"
                         placeholderTextColor="#82958E"
                         accessibilityLabel="Search home services"
                         returnKeyType="search"

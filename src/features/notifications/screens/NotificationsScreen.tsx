@@ -1,3 +1,4 @@
+
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import {
@@ -5,8 +6,10 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from "react-native";
 
 type NotificationType =
@@ -16,1247 +19,1284 @@ type NotificationType =
   | "account"
   | "promotion";
 
-type NotificationFilter =
-  | "all"
-  | "unread"
-  | "booking"
-  | "payment"
-  | "account";
+type NotificationFilter = "all" | "unread" | NotificationType;
+
+type NotificationAction =
+  | { type: "booking"; bookingId: number }
+  | { type: "payment"; bookingId: number }
+  | { type: "review"; bookingId: number }
+  | { type: "provider"; providerId: number }
+  | { type: "profile" }
+  | { type: "support" }
+  | { type: "none" };
 
 type NotificationItem = {
   id: number;
-
   type: NotificationType;
-
   title: string;
   message: string;
-
   isRead: boolean;
-
   createdAt: string;
-
   actionLabel?: string;
+  action: NotificationAction;
+};
 
-  action:
-  | {
-    type: "booking";
-    bookingId: number;
-  }
-  | {
-    type: "payment";
-    bookingId: number;
-  }
-  | {
-    type: "review";
-    bookingId: number;
-  }
-  | {
-    type: "provider";
-    providerId: number;
-  }
-  | {
-    type: "profile";
-  }
-  | {
-    type: "support";
-  }
-  | {
-    type: "none";
-  };
+type NotificationPreferences = {
+  booking: boolean;
+  payment: boolean;
+  review: boolean;
+  promotion: boolean;
+  push: boolean;
+  email: boolean;
 };
 
 const initialNotifications: NotificationItem[] = [
   {
     id: 1,
-
     type: "booking",
-
     title: "Booking Confirmed",
-
     message:
-      "Your Washing Machine Repair booking with Rahul Provider has been confirmed for 20 Sep 2026 at 10:00 AM.",
-
+      "Your Washing Machine Repair booking has been confirmed for 20 Oct 2026 at 10:00 AM.",
     isRead: false,
-
     createdAt: "5 min ago",
-
     actionLabel: "View Booking",
-
-    action: {
-      type: "booking",
-      bookingId: 1001,
-    },
+    action: { type: "booking", bookingId: 1001 },
   },
-
   {
     id: 2,
-
     type: "payment",
-
     title: "Payment Pending",
-
     message:
-      "Payment is still pending for your Home Cleaning booking. Complete payment to keep your booking ready.",
-
+      "Payment is still pending for your Home Cleaning booking. Complete payment to continue.",
     isRead: false,
-
     createdAt: "20 min ago",
-
     actionLabel: "Pay Now",
-
-    action: {
-      type: "payment",
-      bookingId: 1002,
-    },
+    action: { type: "payment", bookingId: 1002 },
   },
-
   {
     id: 3,
-
     type: "booking",
-
     title: "Service Completed",
-
-    message:
-      "Your Electrician service with Rohit Verma has been marked as completed.",
-
+    message: "Your Electrician service has been marked as completed.",
     isRead: false,
-
     createdAt: "2 hours ago",
-
     actionLabel: "View Booking",
-
-    action: {
-      type: "booking",
-      bookingId: 1003,
-    },
+    action: { type: "booking", bookingId: 1003 },
   },
-
   {
     id: 4,
-
     type: "review",
-
     title: "Share Your Experience",
-
     message:
-      "How was your Electrician service? Rate your provider and help other ServiGo customers.",
-
+      "Rate your completed service and help other ServiGo customers.",
     isRead: true,
-
-    createdAt: "3 hours ago",
-
+    createdAt: "Yesterday",
     actionLabel: "Write Review",
-
-    action: {
-      type: "review",
-      bookingId: 1003,
-    },
+    action: { type: "review", bookingId: 1003 },
   },
-
   {
     id: 5,
-
     type: "payment",
-
     title: "Payment Successful",
-
-    message:
-      "Your payment of ₹648 for booking #1001 was completed successfully.",
-
+    message: "Your payment of ₹648 was received successfully.",
     isRead: true,
-
     createdAt: "Yesterday",
-
     actionLabel: "View Booking",
-
-    action: {
-      type: "booking",
-      bookingId: 1001,
-    },
+    action: { type: "booking", bookingId: 1001 },
   },
-
   {
     id: 6,
-
     type: "account",
-
     title: "Email Verified",
-
     message:
       "Your ServiGo email address has been verified successfully.",
-
     isRead: true,
-
     createdAt: "2 days ago",
-
     actionLabel: "View Profile",
-
-    action: {
-      type: "profile",
-    },
+    action: { type: "profile" },
   },
-
   {
     id: 7,
-
     type: "promotion",
-
-    title: "Save Your Favorite Providers",
-
+    title: "Discover Trusted Providers",
     message:
-      "Add professionals you trust to Favorites so you can book them faster next time.",
-
+      "Explore highly rated service providers and save your favourites.",
     isRead: true,
-
     createdAt: "3 days ago",
-
     actionLabel: "Find Providers",
-
-    action: {
-      type: "provider",
-      providerId: 5,
-    },
+    action: { type: "provider", providerId: 5 },
   },
-
   {
     id: 8,
-
     type: "account",
-
-    title: "Need Help?",
-
+    title: "Need a Hand?",
     message:
-      "ServiGo Support is available for booking, payment and account-related assistance.",
-
+      "Contact ServiGo Support for booking, payment or account assistance.",
     isRead: true,
-
-    createdAt: "5 days ago",
-
+    createdAt: "4 days ago",
     actionLabel: "Contact Support",
-
-    action: {
-      type: "support",
-    },
+    action: { type: "support" },
   },
 ];
 
-const filters: {
-  label: string;
-  value: NotificationFilter;
-}[] = [
-    {
-      label: "All",
-      value: "all",
-    },
-    {
-      label: "Unread",
-      value: "unread",
-    },
-    {
-      label: "Bookings",
-      value: "booking",
-    },
-    {
-      label: "Payments",
-      value: "payment",
-    },
-    {
-      label: "Account",
-      value: "account",
-    },
-  ];
+const filters: { label: string; value: NotificationFilter }[] = [
+  { label: "All", value: "all" },
+  { label: "Unread", value: "unread" },
+  { label: "Bookings", value: "booking" },
+  { label: "Payments", value: "payment" },
+  { label: "Reviews", value: "review" },
+  { label: "Account", value: "account" },
+  { label: "Offers", value: "promotion" },
+];
 
-function getNotificationIcon(
-  type: NotificationType
-) {
-  switch (type) {
-    case "booking":
-      return "📅";
+const categoryMeta: Record<
+  NotificationType,
+  { icon: string; label: string; tint: string; color: string }
+> = {
+  booking: {
+    icon: "▣",
+    label: "Booking",
+    tint: "#E8F5F1",
+    color: "#16796F",
+  },
+  payment: {
+    icon: "₹",
+    label: "Payment",
+    tint: "#EAF1FF",
+    color: "#315FC5",
+  },
+  review: {
+    icon: "★",
+    label: "Review",
+    tint: "#FFF4DD",
+    color: "#A56A00",
+  },
+  account: {
+    icon: "✓",
+    label: "Account",
+    tint: "#F0EAFE",
+    color: "#7354B8",
+  },
+  promotion: {
+    icon: "✦",
+    label: "Offer",
+    tint: "#FCEAF2",
+    color: "#B83F78",
+  },
+};
 
-    case "payment":
-      return "💳";
-
-    case "review":
-      return "⭐";
-
-    case "account":
-      return "👤";
-
-    case "promotion":
-      return "🎁";
-  }
-}
-
-function getNotificationStyle(
-  type: NotificationType
-) {
-  switch (type) {
-    case "booking":
-      return {
-        wrapper:
-          "bg-blue-50",
-        text:
-          "text-blue-700",
-      };
-
-    case "payment":
-      return {
-        wrapper:
-          "bg-green-50",
-        text:
-          "text-green-700",
-      };
-
-    case "review":
-      return {
-        wrapper:
-          "bg-amber-50",
-        text:
-          "text-amber-700",
-      };
-
-    case "account":
-      return {
-        wrapper:
-          "bg-violet-50",
-        text:
-          "text-violet-700",
-      };
-
-    case "promotion":
-      return {
-        wrapper:
-          "bg-pink-50",
-        text:
-          "text-pink-700",
-      };
-  }
-}
+const initialPreferences: NotificationPreferences = {
+  booking: true,
+  payment: true,
+  review: true,
+  promotion: false,
+  push: true,
+  email: false,
+};
 
 export default function NotificationsScreen() {
-  const [
-    notifications,
-    setNotifications,
-  ] =
-    useState<NotificationItem[]>(
-      initialNotifications
+  const { width } = useWindowDimensions();
+
+  const isWide = width >= 900;
+  const isSmall = width < 390;
+
+  const [notifications, setNotifications] =
+    useState<NotificationItem[]>(initialNotifications);
+
+  const [activeFilter, setActiveFilter] =
+    useState<NotificationFilter>("all");
+
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+
+  const [preferences, setPreferences] =
+    useState<NotificationPreferences>(initialPreferences);
+
+  const unreadCount = useMemo(
+    () => notifications.filter((item) => !item.isRead).length,
+    [notifications],
+  );
+
+  const filteredNotifications = useMemo(
+    () =>
+      notifications.filter((item) => {
+        if (activeFilter === "unread") return !item.isRead;
+        if (activeFilter === "all") return true;
+        return item.type === activeFilter;
+      }),
+    [notifications, activeFilter],
+  );
+
+  const totalBookings = notifications.filter(
+    (item) => item.type === "booking",
+  ).length;
+
+  const updatePreference = (key: keyof NotificationPreferences) => {
+    setPreferences((current) => ({
+      ...current,
+      [key]: !current[key],
+    }));
+  };
+
+  const markAsRead = (id: number) => {
+    setNotifications((current) =>
+      current.map((item) =>
+        item.id === id ? { ...item, isRead: true } : item,
+      ),
     );
+  };
 
-  const [
-    activeFilter,
-    setActiveFilter,
-  ] =
-    useState<NotificationFilter>(
-      "all"
+  const markAsUnread = (id: number) => {
+    setNotifications((current) =>
+      current.map((item) =>
+        item.id === id ? { ...item, isRead: false } : item,
+      ),
     );
+  };
 
-  const [
-    updatingId,
-    setUpdatingId,
-  ] =
-    useState<number | null>(
-      null
+  const markAllAsRead = () => {
+    setNotifications((current) =>
+      current.map((item) => ({ ...item, isRead: true })),
     );
+  };
 
-  const [
-    deletingId,
-    setDeletingId,
-  ] =
-    useState<number | null>(
-      null
-    );
-
-  const [
-    markingAll,
-    setMarkingAll,
-  ] = useState(false);
-
-  const unreadCount =
-    notifications.filter(
-      (item) =>
-        !item.isRead
-    ).length;
-
-  const filteredNotifications =
-    useMemo(() => {
-      if (
-        activeFilter ===
-        "all"
-      ) {
-        return notifications;
-      }
-
-      if (
-        activeFilter ===
-        "unread"
-      ) {
-        return notifications.filter(
-          (item) =>
-            !item.isRead
-        );
-      }
-
-      return notifications.filter(
-        (item) =>
-          item.type ===
-          activeFilter
+  const deleteNotification = (id: number) => {
+    const remove = () => {
+      setNotifications((current) =>
+        current.filter((item) => item.id !== id),
       );
-    }, [
-      notifications,
-      activeFilter,
-    ]);
-
-  const markAsRead =
-    async (
-      notificationId: number
-    ) => {
-      const target =
-        notifications.find(
-          (item) =>
-            item.id ===
-            notificationId
-        );
-
-      if (
-        !target ||
-        target.isRead
-      ) {
-        return;
-      }
-
-      setUpdatingId(
-        notificationId
-      );
-
-      try {
-        /*
-          BACKEND INTEGRATION LATER
-
-          await notificationsApi.markAsRead(
-            notificationId
-          );
-
-          Example:
-          PATCH /notifications/:id/read
-
-          UI same rahegi.
-        */
-
-        setNotifications(
-          (current) =>
-            current.map(
-              (item) =>
-                item.id ===
-                  notificationId
-                  ? {
-                    ...item,
-                    isRead: true,
-                  }
-                  : item
-            )
-        );
-      } catch (error) {
-        console.error(
-          "Mark notification read error:",
-          error
-        );
-      } finally {
-        setUpdatingId(
-          null
-        );
-      }
+      setExpandedId((current) => (current === id ? null : current));
     };
 
-  const markAsUnread =
-    async (
-      notificationId: number
-    ) => {
-      setUpdatingId(
-        notificationId
-      );
-
-      try {
-        /*
-          Optional backend:
-
-          PATCH /notifications/:id/unread
-        */
-
-        setNotifications(
-          (current) =>
-            current.map(
-              (item) =>
-                item.id ===
-                  notificationId
-                  ? {
-                    ...item,
-                    isRead: false,
-                  }
-                  : item
-            )
-        );
-      } catch (error) {
-        console.error(
-          "Mark unread error:",
-          error
-        );
-      } finally {
-        setUpdatingId(
-          null
-        );
-      }
-    };
-
-  const markAllAsRead =
-    async () => {
-      if (
-        unreadCount === 0
-      ) {
-        return;
-      }
-
-      setMarkingAll(true);
-
-      try {
-        /*
-          BACKEND INTEGRATION LATER
-
-          await notificationsApi.markAllAsRead();
-
-          Example:
-          PATCH /notifications/read-all
-        */
-
-        setNotifications(
-          (current) =>
-            current.map(
-              (item) => ({
-                ...item,
-                isRead: true,
-              })
-            )
-        );
-      } catch (error) {
-        console.error(
-          "Mark all read error:",
-          error
-        );
-
-        if (
-          Platform.OS ===
-          "web"
-        ) {
-          window.alert(
-            "Unable to update notifications."
-          );
-        } else {
-          Alert.alert(
-            "Unable to Update",
-            "Could not mark notifications as read."
-          );
-        }
-      } finally {
-        setMarkingAll(
-          false
-        );
-      }
-    };
-
-  const performDelete =
-    async (
-      notificationId: number
-    ) => {
-      setDeletingId(
-        notificationId
-      );
-
-      try {
-        /*
-          BACKEND INTEGRATION LATER
-
-          await notificationsApi.deleteNotification(
-            notificationId
-          );
-
-          DELETE /notifications/:id
-        */
-
-        setNotifications(
-          (current) =>
-            current.filter(
-              (item) =>
-                item.id !==
-                notificationId
-            )
-        );
-      } catch (error) {
-        console.error(
-          "Delete notification error:",
-          error
-        );
-
-        if (
-          Platform.OS ===
-          "web"
-        ) {
-          window.alert(
-            "Unable to delete notification."
-          );
-        } else {
-          Alert.alert(
-            "Unable to Delete",
-            "Could not delete this notification."
-          );
-        }
-      } finally {
-        setDeletingId(
-          null
-        );
-      }
-    };
-
-  const handleDelete = (
-    notification: NotificationItem
-  ) => {
-    if (
-      Platform.OS ===
-      "web"
-    ) {
-      const confirmed =
-        window.confirm(
-          "Delete this notification?"
-        );
-
-      if (confirmed) {
-        performDelete(
-          notification.id
-        );
-      }
-
+    if (Platform.OS === "web") {
+      remove();
       return;
     }
 
     Alert.alert(
-      "Delete Notification",
-      "Are you sure you want to delete this notification?",
+      "Delete notification?",
+      "This notification will be removed.",
       [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Delete",
-          style:
-            "destructive",
-
-          onPress: () =>
-            performDelete(
-              notification.id
-            ),
-        },
-      ]
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", style: "destructive", onPress: remove },
+      ],
     );
   };
 
-  const openNotificationAction =
-    async (
-      notification: NotificationItem
-    ) => {
-      await markAsRead(
-        notification.id
-      );
+  const openNotificationAction = (notification: NotificationItem) => {
+    markAsRead(notification.id);
 
-      const action =
-        notification.action;
+    switch (notification.action.type) {
+      case "booking":
+        router.push({
+          pathname: "/bookings/[bookingId]",
+          params: { bookingId: String(notification.action.bookingId) },
+        });
+        break;
 
-      switch (action.type) {
-        case "booking":
-          router.push({
-            pathname:
-              "/bookings/[bookingId]",
+      case "payment":
+        router.push({
+          pathname: "/payment/[bookingId]",
+          params: { bookingId: String(notification.action.bookingId) },
+        });
+        break;
 
-            params: {
-              bookingId:
-                String(
-                  action.bookingId
-                ),
-            },
-          });
-          return;
+      case "review":
+        router.push({
+          pathname: "/review/[bookingId]",
+          params: { bookingId: String(notification.action.bookingId) },
+        });
+        break;
 
-        case "payment":
-          router.push({
-            pathname:
-              "/payment/[bookingId]",
+      case "provider":
+        router.push({
+          pathname: "/providers/[providerId]",
+          params: { providerId: String(notification.action.providerId) },
+        });
+        break;
 
-            params: {
-              bookingId:
-                String(
-                  action.bookingId
-                ),
-            },
-          });
-          return;
+      case "profile":
+        router.push("/profile");
+        break;
 
-        case "review":
-          router.push({
-            pathname:
-              "/review/[bookingId]",
+      case "support":
+        router.push("/support");
+        break;
 
-            params: {
-              bookingId:
-                String(
-                  action.bookingId
-                ),
-            },
-          });
-          return;
+      case "none":
+        break;
+    }
+  };
 
-        case "provider":
-          router.push({
-            pathname:
-              "/providers/[providerId]",
-
-            params: {
-              providerId:
-                String(
-                  action.providerId
-                ),
-            },
-          });
-          return;
-
-        case "profile":
-          router.push(
-            "/profile"
-          );
-          return;
-
-        case "support":
-          router.push(
-            "/support"
-          );
-          return;
-
-        case "none":
-          return;
-      }
-    };
+  const toggleExpanded = (id: number) => {
+    setExpandedId((current) => (current === id ? null : id));
+    markAsRead(id);
+  };
 
   return (
     <ScrollView
-      className="flex-1 bg-slate-50"
-      showsVerticalScrollIndicator={
-        false
-      }
-      contentContainerStyle={{
-        paddingBottom: 60,
-      }}
+      style={styles.screen}
+      contentContainerStyle={[
+        styles.scrollContent,
+        { paddingHorizontal: isSmall ? 14 : isWide ? 28 : 20 },
+      ]}
+      showsVerticalScrollIndicator={false}
     >
-      {/* HEADER */}
-      <View className="border-b border-slate-200 bg-white px-5 py-4">
-        <View
-          className="mx-auto w-full flex-row items-center justify-between"
-          style={{
-            maxWidth: 1050,
-          }}
-        >
-          <Pressable
-            onPress={() =>
-              router.back()
-            }
-            className="rounded-xl px-2 py-2"
-          >
-            <Text className="font-semibold text-blue-600">
-              ← Back
-            </Text>
-          </Pressable>
-
-          <Pressable
-            onPress={() =>
-              router.push("/")
-            }
-          >
-            <Text className="text-xl font-bold text-blue-600">
-              ServiGo
-            </Text>
-          </Pressable>
-        </View>
-      </View>
+      {/* Global navbar is already part of the app. */}
 
       <View
-        className="mx-auto w-full px-5 py-8"
-        style={{
-          maxWidth: 1050,
-        }}
+        style={[
+          styles.container,
+          {
+            maxWidth: isWide ? 1440 : 900,
+            paddingTop: isWide ? 32 : 22,
+          },
+        ]}
       >
-        {/* HEADING */}
-        <View className="mb-7 flex-row flex-wrap items-end justify-between gap-5">
-          <View
-            style={{
-              minWidth: 240,
-              flexBasis: 600,
-              flexGrow: 1,
-            }}
-          >
-            <Text className="text-sm font-semibold uppercase tracking-wider text-blue-600">
-              Customer Updates
+        <View style={[styles.pageHeading, isWide && styles.pageHeadingWide]}>
+          <View style={styles.headingCopy}>
+            <Text style={styles.eyebrow}>YOUR SERVIGO ACTIVITY</Text>
+            <Text style={[styles.pageTitle, isSmall && styles.pageTitleSmall]}>
+              Notifications
             </Text>
-
-            <View className="mt-2 flex-row flex-wrap items-center gap-3">
-              <Text className="text-3xl font-bold text-slate-900">
-                Notifications
-              </Text>
-
-              {unreadCount > 0 && (
-                <View className="rounded-full bg-red-500 px-3 py-1">
-                  <Text className="text-xs font-bold text-white">
-                    {unreadCount} unread
-                  </Text>
-                </View>
-              )}
-            </View>
-
-            <Text className="mt-2 max-w-2xl text-base leading-6 text-slate-500">
-              Stay updated on bookings,
-              payments, reviews and
-              account activity.
+            <Text style={styles.subtitle}>
+              Booking updates, payments and important account alerts — all in
+              one place.
             </Text>
           </View>
 
-          <Pressable
-            disabled={
-              unreadCount ===
-              0 ||
-              markingAll
-            }
-            onPress={
-              markAllAsRead
-            }
-            className={
-              unreadCount ===
-                0 ||
-                markingAll
-                ? "rounded-xl border border-slate-200 bg-slate-100 px-5 py-3 opacity-60"
-                : "rounded-xl border border-blue-200 bg-blue-50 px-5 py-3"
-            }
+          <View
+            style={[
+              styles.headingActions,
+              !isWide && styles.headingActionsFull,
+            ]}
           >
-            <Text
-              className={
-                unreadCount ===
-                  0
-                  ? "font-semibold text-slate-400"
-                  : "font-semibold text-blue-700"
-              }
+            <Pressable
+              onPress={() => setShowSettings((current) => !current)}
+              style={[
+                styles.secondaryButton,
+                !isWide && styles.actionButtonFull,
+              ]}
             >
-              {markingAll
-                ? "Updating..."
-                : "Mark All as Read"}
-            </Text>
-          </Pressable>
-        </View>
-
-        {/* STATS */}
-        <View className="mb-6 flex-row flex-wrap gap-4">
-          <View
-            className="rounded-2xl border border-slate-200 bg-white p-5"
-            style={{
-              minWidth: 150,
-              flexBasis: 220,
-              flexGrow: 1,
-            }}
-          >
-            <Text className="text-2xl font-bold text-slate-900">
-              {
-                notifications.length
-              }
-            </Text>
-
-            <Text className="mt-1 text-sm text-slate-500">
-              Total Notifications
-            </Text>
-          </View>
-
-          <View
-            className="rounded-2xl border border-slate-200 bg-white p-5"
-            style={{
-              minWidth: 150,
-              flexBasis: 220,
-              flexGrow: 1,
-            }}
-          >
-            <Text className="text-2xl font-bold text-red-600">
-              {unreadCount}
-            </Text>
-
-            <Text className="mt-1 text-sm text-slate-500">
-              Unread
-            </Text>
-          </View>
-
-          <View
-            className="rounded-2xl border border-slate-200 bg-white p-5"
-            style={{
-              minWidth: 150,
-              flexBasis: 220,
-              flexGrow: 1,
-            }}
-          >
-            <Text className="text-2xl font-bold text-blue-600">
-              {
-                notifications.filter(
-                  (item) =>
-                    item.type ===
-                    "booking"
-                ).length
-              }
-            </Text>
-
-            <Text className="mt-1 text-sm text-slate-500">
-              Booking Updates
-            </Text>
-          </View>
-        </View>
-
-        {/* FILTERS */}
-        <View className="mb-7 flex-row flex-wrap gap-2">
-          {filters.map(
-            (filter) => {
-              const selected =
-                activeFilter ===
-                filter.value;
-
-              return (
-                <Pressable
-                  key={
-                    filter.value
-                  }
-                  onPress={() =>
-                    setActiveFilter(
-                      filter.value
-                    )
-                  }
-                  className={
-                    selected
-                      ? "rounded-full bg-blue-600 px-5 py-2.5"
-                      : "rounded-full border border-slate-200 bg-white px-5 py-2.5"
-                  }
-                >
-                  <Text
-                    className={
-                      selected
-                        ? "font-semibold text-white"
-                        : "font-semibold text-slate-600"
-                    }
-                  >
-                    {
-                      filter.label
-                    }
-
-                    {filter.value ===
-                      "unread" &&
-                      unreadCount >
-                      0 &&
-                      ` (${unreadCount})`}
-                  </Text>
-                </Pressable>
-              );
-            }
-          )}
-        </View>
-
-        {/* RESULT COUNT */}
-        <View className="mb-5">
-          <Text className="text-xl font-bold text-slate-900">
-            Recent Updates
-          </Text>
-
-          <Text className="mt-1 text-sm text-slate-500">
-            {
-              filteredNotifications.length
-            }{" "}
-            {filteredNotifications.length ===
-              1
-              ? "notification"
-              : "notifications"}
-          </Text>
-        </View>
-
-        {/* NOTIFICATION LIST */}
-        {filteredNotifications.length >
-          0 ? (
-          <View className="gap-4">
-            {filteredNotifications.map(
-              (
-                notification
-              ) => {
-                const style =
-                  getNotificationStyle(
-                    notification.type
-                  );
-
-                const updating =
-                  updatingId ===
-                  notification.id;
-
-                const deleting =
-                  deletingId ===
-                  notification.id;
-
-                return (
-                  <View
-                    key={
-                      notification.id
-                    }
-                    className={
-                      notification.isRead
-                        ? "rounded-3xl border border-slate-200 bg-white p-6"
-                        : "rounded-3xl border-2 border-blue-200 bg-blue-50/30 p-6"
-                    }
-                  >
-                    <View className="flex-row items-start gap-4">
-                      {/* ICON */}
-                      <View
-                        className={`h-14 w-14 items-center justify-center rounded-2xl ${style.wrapper}`}
-                      >
-                        <Text className="text-2xl">
-                          {getNotificationIcon(
-                            notification.type
-                          )}
-                        </Text>
-                      </View>
-
-                      {/* CONTENT */}
-                      <View className="flex-1">
-                        <View className="flex-row flex-wrap items-center gap-2">
-                          <Text className="text-lg font-bold text-slate-900">
-                            {
-                              notification.title
-                            }
-                          </Text>
-
-                          {!notification.isRead && (
-                            <View className="rounded-full bg-blue-600 px-2.5 py-1">
-                              <Text className="text-[10px] font-bold uppercase text-white">
-                                New
-                              </Text>
-                            </View>
-                          )}
-
-                          <View
-                            className={`rounded-full px-3 py-1 ${style.wrapper}`}
-                          >
-                            <Text
-                              className={`text-xs font-bold capitalize ${style.text}`}
-                            >
-                              {
-                                notification.type
-                              }
-                            </Text>
-                          </View>
-                        </View>
-
-                        <Text className="mt-2 max-w-3xl leading-6 text-slate-600">
-                          {
-                            notification.message
-                          }
-                        </Text>
-
-                        <Text className="mt-3 text-xs text-slate-400">
-                          {
-                            notification.createdAt
-                          }
-                        </Text>
-
-                        {/* ACTIONS */}
-                        <View className="mt-5 flex-row flex-wrap gap-2">
-                          {notification.actionLabel &&
-                            notification.action
-                              .type !==
-                            "none" && (
-                              <Pressable
-                                disabled={
-                                  updating
-                                }
-                                onPress={() =>
-                                  openNotificationAction(
-                                    notification
-                                  )
-                                }
-                                className="rounded-xl bg-blue-600 px-5 py-3"
-                              >
-                                <Text className="font-bold text-white">
-                                  {
-                                    notification.actionLabel
-                                  }
-                                </Text>
-                              </Pressable>
-                            )}
-
-                          {!notification.isRead ? (
-                            <Pressable
-                              disabled={
-                                updating
-                              }
-                              onPress={() =>
-                                markAsRead(
-                                  notification.id
-                                )
-                              }
-                              className="rounded-xl border border-slate-200 bg-white px-5 py-3"
-                            >
-                              <Text className="font-semibold text-slate-700">
-                                {updating
-                                  ? "Updating..."
-                                  : "Mark as Read"}
-                              </Text>
-                            </Pressable>
-                          ) : (
-                            <Pressable
-                              disabled={
-                                updating
-                              }
-                              onPress={() =>
-                                markAsUnread(
-                                  notification.id
-                                )
-                              }
-                              className="rounded-xl border border-slate-200 bg-white px-5 py-3"
-                            >
-                              <Text className="font-semibold text-slate-600">
-                                {updating
-                                  ? "Updating..."
-                                  : "Mark Unread"}
-                              </Text>
-                            </Pressable>
-                          )}
-
-                          <Pressable
-                            disabled={
-                              deleting
-                            }
-                            onPress={() =>
-                              handleDelete(
-                                notification
-                              )
-                            }
-                            className={
-                              deleting
-                                ? "rounded-xl border border-red-200 bg-red-50 px-5 py-3 opacity-60"
-                                : "rounded-xl border border-red-200 bg-red-50 px-5 py-3"
-                            }
-                          >
-                            <Text className="font-semibold text-red-600">
-                              {deleting
-                                ? "Deleting..."
-                                : "Delete"}
-                            </Text>
-                          </Pressable>
-                        </View>
-                      </View>
-                    </View>
-                  </View>
-                );
-              }
-            )}
-          </View>
-        ) : (
-          /* EMPTY STATE */
-          <View className="items-center rounded-3xl border border-slate-200 bg-white px-6 py-16">
-            <View className="h-24 w-24 items-center justify-center rounded-full bg-blue-50">
-              <Text className="text-5xl">
-                🔔
+              <Text style={styles.secondaryButtonText}>
+                {showSettings ? "Close settings" : "⚙ Preferences"}
               </Text>
-            </View>
-
-            <Text className="mt-6 text-center text-2xl font-bold text-slate-900">
-              {notifications.length ===
-                0
-                ? "No notifications yet"
-                : activeFilter ===
-                  "unread"
-                  ? "You're all caught up"
-                  : "No notifications found"}
-            </Text>
-
-            <Text className="mt-2 max-w-lg text-center leading-6 text-slate-500">
-              {notifications.length ===
-                0
-                ? "Booking updates, payments and account notifications will appear here."
-                : activeFilter ===
-                  "unread"
-                  ? "You don't have any unread notifications right now."
-                  : "There are no notifications in this category."}
-            </Text>
-
-            {notifications.length >
-              0 ? (
-              <Pressable
-                onPress={() =>
-                  setActiveFilter(
-                    "all"
-                  )
-                }
-                className="mt-6 rounded-xl bg-blue-600 px-6 py-4"
-              >
-                <Text className="font-bold text-white">
-                  View All Notifications
-                </Text>
-              </Pressable>
-            ) : (
-              <Pressable
-                onPress={() =>
-                  router.push("/")
-                }
-                className="mt-6 rounded-xl bg-blue-600 px-6 py-4"
-              >
-                <Text className="font-bold text-white">
-                  Back to Home
-                </Text>
-              </Pressable>
-            )}
-          </View>
-        )}
-
-        {/* INFO */}
-        <View className="mt-7 rounded-3xl bg-slate-900 p-7">
-          <View className="flex-row flex-wrap items-center justify-between gap-5">
-            <View
-              style={{
-                minWidth: 220,
-                flexBasis: 550,
-                flexGrow: 1,
-              }}
-            >
-              <Text className="text-xl font-bold text-white">
-                Need help with an update?
-              </Text>
-
-              <Text className="mt-2 max-w-2xl leading-6 text-slate-300">
-                If you have questions
-                about a booking,
-                payment or account
-                notification, ServiGo
-                Support can help.
-              </Text>
-            </View>
+            </Pressable>
 
             <Pressable
-              onPress={() =>
-                router.push(
-                  "/support"
-                )
-              }
-              className="rounded-xl bg-white px-6 py-4"
+              onPress={markAllAsRead}
+              disabled={unreadCount === 0}
+              style={[
+                styles.primaryButton,
+                !isWide && styles.actionButtonFull,
+                unreadCount === 0 && styles.disabledButton,
+              ]}
             >
-              <Text className="font-bold text-slate-900">
-                Contact Support
-              </Text>
+              <Text style={styles.primaryButtonText}>✓ Mark all as read</Text>
             </Pressable>
           </View>
         </View>
+
+        <View style={[styles.statsGrid, isWide && styles.statsGridWide]}>
+          <StatCard
+            label="Total notifications"
+            value={notifications.length}
+            note="Across all updates"
+          />
+          <StatCard
+            label="Unread"
+            value={unreadCount}
+            note={unreadCount ? "Needs your attention" : "You're all caught up"}
+            accent={unreadCount > 0}
+          />
+          <StatCard
+            label="Booking updates"
+            value={totalBookings}
+            note="Booking status changes"
+          />
+        </View>
+
+        {showSettings && (
+          <View style={styles.settingsCard}>
+            <View style={styles.settingsHeader}>
+              <View style={styles.headingCopy}>
+                <Text style={styles.sectionTitle}>
+                  Notification preferences
+                </Text>
+                <Text style={styles.sectionSubtitle}>
+                  Choose which updates you want to receive.
+                </Text>
+              </View>
+              <Text style={styles.settingsIcon}>⚙</Text>
+            </View>
+
+            <Text style={styles.preferenceGroupTitle}>
+              IN-APP NOTIFICATIONS
+            </Text>
+
+            <View style={styles.preferenceGrid}>
+              <PreferenceRow
+                title="Booking updates"
+                description="Confirmations and service status"
+                value={preferences.booking}
+                onPress={() => updatePreference("booking")}
+              />
+              <PreferenceRow
+                title="Payment alerts"
+                description="Pending and successful payments"
+                value={preferences.payment}
+                onPress={() => updatePreference("payment")}
+              />
+              <PreferenceRow
+                title="Review reminders"
+                description="Rate your completed service"
+                value={preferences.review}
+                onPress={() => updatePreference("review")}
+              />
+              <PreferenceRow
+                title="Offers and promotions"
+                description="Deals and provider suggestions"
+                value={preferences.promotion}
+                onPress={() => updatePreference("promotion")}
+              />
+            </View>
+
+            <Text style={[styles.preferenceGroupTitle, { marginTop: 18 }]}>
+              DELIVERY CHANNELS
+            </Text>
+
+            <View style={styles.preferenceGrid}>
+              <PreferenceRow
+                title="Push notifications"
+                description="Device alerts when supported"
+                value={preferences.push}
+                onPress={() => updatePreference("push")}
+              />
+              <PreferenceRow
+                title="Email notifications"
+                description="Important updates by email"
+                value={preferences.email}
+                onPress={() => updatePreference("email")}
+              />
+            </View>
+
+            <Text style={styles.settingsFootnote}>
+              These preferences currently exist only in screen state. Saving
+              them permanently and enabling push/email delivery requires
+              backend integration.
+            </Text>
+          </View>
+        )}
+
+        <View style={styles.filterSection}>
+          <View style={styles.sectionHeadingRow}>
+            <View style={styles.headingCopy}>
+              <Text style={styles.sectionTitle}>Recent updates</Text>
+              <Text style={styles.sectionSubtitle}>
+                {filteredNotifications.length}{" "}
+                {filteredNotifications.length === 1
+                  ? "notification"
+                  : "notifications"}
+              </Text>
+            </View>
+
+            {activeFilter !== "all" && (
+              <Pressable
+                onPress={() => setActiveFilter("all")}
+                style={styles.clearFilter}
+              >
+                <Text style={styles.clearFilterText}>Clear filter ×</Text>
+              </Pressable>
+            )}
+          </View>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterRow}
+          >
+            {filters.map((filter) => {
+              const selected = activeFilter === filter.value;
+
+              return (
+                <Pressable
+                  key={filter.value}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  onPress={() => setActiveFilter(filter.value)}
+                  style={[
+                    styles.filterChip,
+                    selected && styles.filterChipSelected,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.filterText,
+                      selected && styles.filterTextSelected,
+                    ]}
+                  >
+                    {filter.label}
+                    {filter.value === "unread" && unreadCount > 0
+                      ? ` ${unreadCount}`
+                      : ""}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+
+        {filteredNotifications.length > 0 ? (
+          <View style={styles.notificationList}>
+            {filteredNotifications.map((notification) => {
+              const meta = categoryMeta[notification.type];
+              const expanded = expandedId === notification.id;
+
+              return (
+                <View
+                  key={notification.id}
+                  style={[
+                    styles.notificationCard,
+                    !notification.isRead && styles.unreadCard,
+                  ]}
+                >
+                  <Pressable
+                    onPress={() => toggleExpanded(notification.id)}
+                    style={styles.notificationMain}
+                  >
+                    <View
+                      style={[
+                        styles.categoryIcon,
+                        { backgroundColor: meta.tint },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.categoryIconText,
+                          { color: meta.color },
+                        ]}
+                      >
+                        {meta.icon}
+                      </Text>
+                    </View>
+
+                    <View style={styles.notificationContent}>
+                      <View style={styles.notificationTitleRow}>
+                        <Text style={styles.notificationTitle}>
+                          {notification.title}
+                        </Text>
+                        {!notification.isRead && <View style={styles.unreadDot} />}
+                      </View>
+
+                      <Text
+                        style={styles.notificationMessage}
+                        numberOfLines={expanded ? undefined : 2}
+                      >
+                        {notification.message}
+                      </Text>
+
+                      <View style={styles.notificationMetaRow}>
+                        <View
+                          style={[
+                            styles.categoryPill,
+                            { backgroundColor: meta.tint },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.categoryPillText,
+                              { color: meta.color },
+                            ]}
+                          >
+                            {meta.label}
+                          </Text>
+                        </View>
+                        <Text style={styles.timeText}>
+                          {notification.createdAt}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <Text style={styles.expandChevron}>
+                      {expanded ? "⌃" : "⌄"}
+                    </Text>
+                  </Pressable>
+
+                  {expanded && (
+                    <View style={styles.expandedContent}>
+                      <Text style={styles.detailLabel}>DETAILS</Text>
+                      <Text style={styles.detailMessage}>
+                        {notification.message}
+                      </Text>
+
+                      <View
+                        style={[
+                          styles.cardActions,
+                          !isWide && styles.cardActionsStack,
+                        ]}
+                      >
+                        {notification.actionLabel &&
+                          notification.action.type !== "none" && (
+                            <Pressable
+                              onPress={() =>
+                                openNotificationAction(notification)
+                              }
+                              style={styles.primaryButton}
+                            >
+                              <Text style={styles.primaryButtonText}>
+                                {notification.actionLabel} →
+                              </Text>
+                            </Pressable>
+                          )}
+
+                        <Pressable
+                          onPress={() =>
+                            notification.isRead
+                              ? markAsUnread(notification.id)
+                              : markAsRead(notification.id)
+                          }
+                          style={styles.secondaryButton}
+                        >
+                          <Text style={styles.secondaryButtonText}>
+                            {notification.isRead
+                              ? "Mark as unread"
+                              : "Mark as read"}
+                          </Text>
+                        </Pressable>
+
+                        <Pressable
+                          onPress={() => deleteNotification(notification.id)}
+                          style={styles.deleteButton}
+                        >
+                          <Text style={styles.deleteButtonText}>Delete</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        ) : (
+          <View style={styles.emptyCard}>
+            <View style={styles.emptyIconWrap}>
+              <Text style={styles.emptyIcon}>✓</Text>
+            </View>
+            <Text style={styles.emptyTitle}>
+              {activeFilter === "unread"
+                ? "You're all caught up"
+                : "No notifications here"}
+            </Text>
+            <Text style={styles.emptyText}>
+              {activeFilter === "unread"
+                ? "There are no unread updates right now."
+                : "Try another filter or check back later."}
+            </Text>
+            <Pressable
+              onPress={() => setActiveFilter("all")}
+              style={styles.primaryButton}
+            >
+              <Text style={styles.primaryButtonText}>
+                View all notifications
+              </Text>
+            </Pressable>
+          </View>
+        )}
+
+        <View style={[styles.supportCard, isWide && styles.supportCardWide]}>
+          <View style={styles.supportCopy}>
+            <Text style={styles.supportTitle}>
+              Need help with an update?
+            </Text>
+            <Text style={styles.supportText}>
+              Get assistance with your booking, payment or account notification
+              from ServiGo Support.
+            </Text>
+          </View>
+
+          <Pressable
+            onPress={() => router.push("/support")}
+            style={styles.supportButton}
+          >
+            <Text style={styles.supportButtonText}>Contact support →</Text>
+          </Pressable>
+        </View>
+
+        <Text style={styles.footerNote}>
+          Sample notifications are displayed until the notifications API is
+          connected.
+        </Text>
       </View>
     </ScrollView>
   );
 }
+
+type StatCardProps = {
+  label: string;
+  value: number;
+  note: string;
+  accent?: boolean;
+};
+
+function StatCard({ label, value, note, accent = false }: StatCardProps) {
+  return (
+    <View style={styles.statCard}>
+      <Text style={styles.statLabel}>{label}</Text>
+      <Text style={[styles.statValue, accent && styles.statValueAccent]}>
+        {value}
+      </Text>
+      <Text style={styles.statNote}>{note}</Text>
+    </View>
+  );
+}
+
+type PreferenceRowProps = {
+  title: string;
+  description: string;
+  value: boolean;
+  onPress: () => void;
+};
+
+function PreferenceRow({
+  title,
+  description,
+  value,
+  onPress,
+}: PreferenceRowProps) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: value }}
+      style={styles.preferenceRow}
+    >
+      <View style={styles.preferenceTextWrap}>
+        <Text style={styles.preferenceTitle}>{title}</Text>
+        <Text style={styles.preferenceDescription}>{description}</Text>
+      </View>
+
+      <View style={[styles.switchTrack, value && styles.switchTrackOn]}>
+        <View style={[styles.switchThumb, value && styles.switchThumbOn]} />
+      </View>
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: "#F3F9F6",
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 36,
+  },
+  container: {
+    width: "100%",
+    alignSelf: "center",
+    paddingBottom: 24,
+  },
+  pageHeading: {
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: 20,
+    marginBottom: 24,
+  },
+  pageHeadingWide: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 24,
+  },
+  headingCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  eyebrow: {
+    color: "#16796F",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1.5,
+    marginBottom: 9,
+  },
+  pageTitle: {
+    color: "#173D38",
+    fontSize: 34,
+    fontWeight: "800",
+    letterSpacing: -0.8,
+    marginBottom: 8,
+  },
+  pageTitleSmall: {
+    fontSize: 28,
+  },
+  subtitle: {
+    color: "#71827E",
+    fontSize: 14,
+    lineHeight: 22,
+    maxWidth: 560,
+  },
+  headingActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 10,
+  },
+  headingActionsFull: {
+    width: "100%",
+    flexDirection: "column",
+    alignItems: "stretch",
+  },
+  primaryButton: {
+    minHeight: 44,
+    paddingHorizontal: 17,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: "#16796F",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  primaryButtonText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  secondaryButton: {
+    minHeight: 44,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#DCE9E4",
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  secondaryButtonText: {
+    color: "#28534C",
+    fontSize: 13,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  actionButtonFull: {
+    width: "100%",
+  },
+  disabledButton: {
+    opacity: 0.45,
+  },
+  statsGrid: {
+    flexDirection: "column",
+    gap: 12,
+    marginBottom: 26,
+  },
+  statsGridWide: {
+    flexDirection: "row",
+    alignItems: "stretch",
+  },
+  statCard: {
+    flex: 1,
+    minWidth: 0,
+    padding: 18,
+    borderRadius: 18,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E7EFEB",
+  },
+  statLabel: {
+    color: "#71827E",
+    fontSize: 12,
+    fontWeight: "600",
+    marginBottom: 12,
+  },
+  statValue: {
+    color: "#173D38",
+    fontSize: 29,
+    fontWeight: "800",
+    marginBottom: 5,
+  },
+  statValueAccent: {
+    color: "#16796F",
+  },
+  statNote: {
+    color: "#82918D",
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  settingsCard: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E2ECE7",
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 28,
+  },
+  settingsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 22,
+  },
+  settingsIcon: {
+    width: 42,
+    height: 42,
+    lineHeight: 42,
+    textAlign: "center",
+    overflow: "hidden",
+    borderRadius: 14,
+    backgroundColor: "#E8F5F1",
+    color: "#16796F",
+    fontSize: 21,
+  },
+  sectionTitle: {
+    color: "#173D38",
+    fontSize: 20,
+    fontWeight: "800",
+    letterSpacing: -0.3,
+    marginBottom: 5,
+  },
+  sectionSubtitle: {
+    color: "#7A8985",
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  preferenceGroupTitle: {
+    color: "#82918D",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.3,
+    marginBottom: 10,
+  },
+  preferenceGrid: {
+    flexDirection: "column",
+    gap: 10,
+  },
+  preferenceRow: {
+    minHeight: 76,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    borderWidth: 1,
+    borderColor: "#E8EFEB",
+    borderRadius: 14,
+    backgroundColor: "#FCFDFC",
+  },
+  preferenceTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  preferenceTitle: {
+    color: "#294740",
+    fontSize: 13,
+    fontWeight: "700",
+    marginBottom: 5,
+  },
+  preferenceDescription: {
+    color: "#84918D",
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  switchTrack: {
+    width: 43,
+    height: 25,
+    padding: 3,
+    borderRadius: 20,
+    backgroundColor: "#D9E2DE",
+    justifyContent: "center",
+  },
+  switchTrackOn: {
+    backgroundColor: "#16796F",
+  },
+  switchThumb: {
+    width: 19,
+    height: 19,
+    borderRadius: 10,
+    backgroundColor: "#FFFFFF",
+    alignSelf: "flex-start",
+  },
+  switchThumbOn: {
+    alignSelf: "flex-end",
+  },
+  settingsFootnote: {
+    color: "#84918D",
+    fontSize: 11,
+    lineHeight: 17,
+    marginTop: 18,
+  },
+  filterSection: {
+    marginBottom: 16,
+  },
+  sectionHeadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 16,
+  },
+  clearFilter: {
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: "#E8F5F1",
+  },
+  clearFilterText: {
+    color: "#16796F",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  filterRow: {
+    flexDirection: "row",
+    gap: 8,
+    paddingBottom: 6,
+    paddingRight: 8,
+  },
+  filterChip: {
+    minHeight: 38,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "#DCE8E2",
+    backgroundColor: "#FFFFFF",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  filterChipSelected: {
+    borderColor: "#16796F",
+    backgroundColor: "#16796F",
+  },
+  filterText: {
+    color: "#5F746D",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  filterTextSelected: {
+    color: "#FFFFFF",
+  },
+  notificationList: {
+    gap: 12,
+  },
+  notificationCard: {
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#E5EDE8",
+    borderRadius: 18,
+    backgroundColor: "#FFFFFF",
+  },
+  unreadCard: {
+    borderColor: "#B8DCD1",
+    backgroundColor: "#FEFFFE",
+  },
+  notificationMain: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 13,
+    padding: 16,
+  },
+  categoryIcon: {
+    width: 43,
+    height: 43,
+    flexShrink: 0,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  categoryIconText: {
+    fontSize: 20,
+    fontWeight: "800",
+  },
+  notificationContent: {
+    flex: 1,
+    minWidth: 0,
+  },
+  notificationTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 6,
+  },
+  notificationTitle: {
+    flexShrink: 1,
+    color: "#24443D",
+    fontSize: 14,
+    fontWeight: "800",
+    lineHeight: 20,
+  },
+  unreadDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: "#16796F",
+  },
+  notificationMessage: {
+    color: "#75857F",
+    fontSize: 12,
+    lineHeight: 19,
+  },
+  notificationMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 9,
+    marginTop: 12,
+  },
+  categoryPill: {
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 20,
+  },
+  categoryPillText: {
+    fontSize: 10,
+    fontWeight: "800",
+  },
+  timeText: {
+    color: "#96A29E",
+    fontSize: 10,
+  },
+  expandChevron: {
+    color: "#7D9189",
+    fontSize: 21,
+    paddingLeft: 2,
+    paddingTop: 3,
+  },
+  expandedContent: {
+    borderTopWidth: 1,
+    borderTopColor: "#EDF2EF",
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 17,
+    backgroundColor: "#FCFDFC",
+  },
+  detailLabel: {
+    color: "#82918D",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.2,
+    marginBottom: 7,
+  },
+  detailMessage: {
+    color: "#536B63",
+    fontSize: 12,
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  cardActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 9,
+  },
+  cardActionsStack: {
+    flexDirection: "column",
+    alignItems: "stretch",
+  },
+  deleteButton: {
+    minHeight: 44,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#F0D8D8",
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  deleteButtonText: {
+    color: "#B54747",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  emptyCard: {
+    alignItems: "center",
+    paddingHorizontal: 24,
+    paddingVertical: 38,
+    borderWidth: 1,
+    borderColor: "#E4ECE7",
+    borderRadius: 20,
+    backgroundColor: "#FFFFFF",
+  },
+  emptyIconWrap: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: "#E8F5F1",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+  },
+  emptyIcon: {
+    color: "#16796F",
+    fontSize: 27,
+    fontWeight: "800",
+  },
+  emptyTitle: {
+    color: "#24443D",
+    fontSize: 17,
+    fontWeight: "800",
+    textAlign: "center",
+    marginBottom: 7,
+  },
+  emptyText: {
+    maxWidth: 300,
+    color: "#82918D",
+    fontSize: 12,
+    lineHeight: 19,
+    textAlign: "center",
+    marginBottom: 20,
+  },
+  supportCard: {
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: 18,
+    padding: 20,
+    marginTop: 24,
+    borderRadius: 18,
+    backgroundColor: "#E8F5F1",
+  },
+  supportCardWide: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  supportCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  supportTitle: {
+    color: "#204A42",
+    fontSize: 16,
+    fontWeight: "800",
+    marginBottom: 7,
+  },
+  supportText: {
+    color: "#658078",
+    fontSize: 12,
+    lineHeight: 19,
+  },
+  supportButton: {
+    minHeight: 44,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "flex-start",
+  },
+  supportButtonText: {
+    color: "#16796F",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  footerNote: {
+    color: "#98A49F",
+    fontSize: 11,
+    lineHeight: 17,
+    textAlign: "center",
+    marginTop: 20,
+  },
+});
